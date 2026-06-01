@@ -1,0 +1,33 @@
+# Code Composer Studio / Eclipse (MSPM0 / embedded)
+
+# Build outputs
+Debug/
+Release/
+*/Debug/
+*/Release/
+
+# Tooling caches
+.claude/
+
+# Common compiler artifacts
+*.o
+*.obj
+*.d
+*.dep
+*.a
+*.lib
+*.so
+*.dll
+*.exe
+
+# Firmware / map outputs
+*.out
+*.elf
+*.hex
+*.bin
+*.map
+*.linkInfo.xml
+
+# Logs / temp
+*.log
+*.tmp
