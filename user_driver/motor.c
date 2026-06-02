@@ -20,6 +20,7 @@ void motor_init(uint8_t motor_id)
 
 void motor_set_duty(uint8_t motor_id, uint32_t duty)
 {
+    // 限幅输出：确保duty在0~4000范围内
     if(duty > 4000){
         duty = 4000;
     }
@@ -81,11 +82,13 @@ void calculate_speed(uint8_t motor_id)
     }
 }
 
-float kp = 0.5; // 比例系数
-float ki = 0.4; // 积分系数
-float kd = 0.0; // 微分系数
+float kp = 0.2; // 比例系数
+float ki = 0.2; // 积分系数
+float kd = 0.1; // 微分系数
 
-uint16_t PWM_1_duty = 0;
+#define ERROR_THRESHOLD 30   // 积分限幅阈值，限制积分项单次最大增量
+
+int16_t PWM_1_duty = 0;  // 改为有符号类型，防止下溢
 float target_speed_1 = 0; // 目标速度 mm/s
 // float target_speed_2 = 0; // 目标速度 mm/s
 float last_error_1 = 0;
@@ -95,16 +98,68 @@ float prev_error_1 = 0; // 上上次误差，用于D项
 void DC_MOTOR_PID(uint8_t motor_id)
 {
     float error;
+    float delta_pwm;
+    static uint8_t stall_cnt = 0;   // 堵转持续计数
+    static uint8_t cooldown = 0;    // 冷却计数，防止重复触发
+
     if (motor_id == 1) {
         error = target_speed_1 - speed_1;
         current_error_1 = error;
+
         // 增量式PID：ΔPWM = Kp*(e[n]-e[n-1]) + Ki*e[n] + Kd*(e[n]-2*e[n-1]+e[n-2])
-        PWM_1_duty += (int16_t)(kp * (current_error_1 - last_error_1)
-                                + ki * current_error_1
-                                + kd * (current_error_1 - 2*last_error_1 + prev_error_1));
+        delta_pwm = kp * (current_error_1 - last_error_1)
+                  + ki * current_error_1
+                  + kd * (current_error_1 - 2*last_error_1 + prev_error_1);
+
+        // 积分限幅：限制积分项单次增量，减少启动超调
+        if (ki * current_error_1 > ERROR_THRESHOLD) {
+            delta_pwm = kp * (current_error_1 - last_error_1)
+                      + ERROR_THRESHOLD   // 积分项不超过阈值
+                      + kd * (current_error_1 - 2*last_error_1 + prev_error_1);
+        }
+        else if (ki * current_error_1 < -ERROR_THRESHOLD) {
+            delta_pwm = kp * (current_error_1 - last_error_1)
+                      - ERROR_THRESHOLD
+                      + kd * (current_error_1 - 2*last_error_1 + prev_error_1);
+        }
+
+        // 积分抗饱和：当PWM达到限幅且增量方向相同时，限制积分项
+        if ((PWM_1_duty >= 4000 && delta_pwm > 0) ||
+            (PWM_1_duty <= 0 && delta_pwm < 0)) {
+            // 只保留比例项和微分项，去掉积分项
+            delta_pwm = kp * (current_error_1 - last_error_1)
+                      + kd * (current_error_1 - 2*last_error_1 + prev_error_1);
+        }
+
+        PWM_1_duty += (int16_t)delta_pwm;
+
+        // 限幅输出：将PWM限制在0~4000范围内
+        if (PWM_1_duty > 4000) {
+            PWM_1_duty = 4000;
+        }
+        if (PWM_1_duty < 0) {
+            PWM_1_duty = 0;
+        }
+
+        // 堵转保护：PWM满幅但电机不转（如电机断电），持续一段时间后重置PID状态
+        if (cooldown > 0) {
+            cooldown--;  // 冷却期倒数
+        } else if (PWM_1_duty >= 3500 && speed_1 < 15.0f) {
+            stall_cnt++;
+            if (stall_cnt > 15) {  // 持续750ms，判定为堵转
+                PWM_1_duty = 0;
+                last_error_1 = 0;
+                prev_error_1 = 0;
+                stall_cnt = 0;
+                cooldown = 50;     // 冷却2.5秒
+            }
+        } else {
+            stall_cnt = 0;
+        }
+
         prev_error_1 = last_error_1;
         last_error_1 = current_error_1;
-        motor_set_duty(motor_id, PWM_1_duty);
+        motor_set_duty(motor_id, (uint16_t)PWM_1_duty);
     }
     if (motor_id == 2) {
         // error = target_speed - speed_2;
