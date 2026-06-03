@@ -37,9 +37,9 @@
 #include "uart.h"
 #include "key.h"
 #include "motor.h"
+#include "pid.h"
 
 int status = 0;
-extern float target_speed_1;
 
 int main(void)
 {
@@ -49,21 +49,36 @@ int main(void)
     OLED_DisplayTurn(0);//0正常显示 1 屏幕翻转显示
     OLED_Clear();
     // NVIC_EnableIRQ(PRINT_INST_INT_IRQN);
-    NVIC_EnableIRQ(KEY_INT_IRQN);
-    NVIC_EnableIRQ(DC_MOTOR_INT_IRQN);
-    DL_ADC12_enableConversions(xuanniu_INST);
-    DL_Timer_startCounter(SERVO_INST);
-    DL_Timer_setCaptureCompareValue(SERVO_INST, 50, GPIO_SERVO_C1_IDX);
-    motor_init(1);
-    // motor_set_duty(1, 2000);
-    target_speed_1 = 300;
-    
+    NVIC_EnableIRQ(GPIO_MULTIPLE_GPIOB_INT_IRQN);
+    NVIC_EnableIRQ(DC_MOTOR_GPIOA_INT_IRQN);
+    // DL_ADC12_enableConversions(xuanniu_INST);
+    // DL_Timer_startCounter(SERVO_INST);
+    // DL_Timer_setCaptureCompareValue(SERVO_INST, 50, GPIO_SERVO_C1_IDX);
+    motor_init(MOTOR_1);
+    motor_init(MOTOR_2);
+    pid_set_target_speed(MOTOR_1, 300);
+    pid_set_target_speed(MOTOR_2, 300);
+
+    // 设置电机方向：1正转
+    motor_set_direction(MOTOR_1, 1);
+    motor_set_direction(MOTOR_2, 1);
 
     while (1) {
-        delay_ms(1000);
-        motor_set_direction(1, 1);
-        delay_ms(1000);
-        motor_set_direction(1, 1);
+        // LED0闪烁，表示程序运行正常
+        DL_GPIO_togglePins(LED_PORT, LED_LED0_PIN);
+        delay_ms(500);
+        // 手动调用PID
+        calculate_speed(MOTOR_1);
+        calculate_speed(MOTOR_2);
+        DC_MOTOR_PID(MOTOR_1);
+        DC_MOTOR_PID(MOTOR_2);
+        // VOFA输出4通道数据
+        float vofa_data[4];
+        vofa_data[0] = target_speed_1;
+        vofa_data[1] = speed_1;
+        vofa_data[2] = target_speed_2;
+        vofa_data[3] = speed_2;
+        VOFA_SendFrame(PRINT_INST, vofa_data, 4);
         
 
         

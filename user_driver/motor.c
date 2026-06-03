@@ -1,200 +1,104 @@
 #include "motor.h"
-#include "uart.h"
 
+/*
+ *  ========================================
+ *  电机初始化函数
+ *  ========================================
+ */
 void motor_init(uint8_t motor_id)
 {
+    // 使能TB6612
     DL_GPIO_setPins(DC_MOTOR_STBY_PORT, DC_MOTOR_STBY_PIN);
-    if(motor_id == 1){
+
+    if(motor_id == MOTOR_1){
+        // 启动电机1的PWM定时器
         DL_Timer_startCounter(PWMA_INST);
+        // 初始方向：停止 (AIN1=1, AIN2=1)
         DL_GPIO_setPins(DC_MOTOR_AIN1_PORT, DC_MOTOR_AIN1_PIN);
         DL_GPIO_setPins(DC_MOTOR_AIN2_PORT, DC_MOTOR_AIN2_PIN);
+        // 初始占空比为0
         DL_Timer_setCaptureCompareValue(PWMA_INST, 0, GPIO_PWMA_C0_IDX);
     }
-    else if(motor_id == 2){
-        // DL_GPIO_setPins(DC_MOTOR_BIN1_PORT, DC_MOTOR_BIN1_PIN);
-        // DL_GPIO_setPins(DC_MOTOR_BIN2_PORT, DC_MOTOR_BIN2_PIN);
+    else if(motor_id == MOTOR_2){
+        // 启动电机2的PWM定时器
+        DL_Timer_startCounter(PWMB_INST);
+        // 初始方向：停止 (BIN1=1, BIN2=1)
+        DL_GPIO_setPins(DC_MOTOR_BIN1_PORT, DC_MOTOR_BIN1_PIN);
+        DL_GPIO_setPins(DC_MOTOR_BIN2_PORT, DC_MOTOR_BIN2_PIN);
+        // 初始占空比为0
+        DL_Timer_setCaptureCompareValue(PWMB_INST, 0, GPIO_PWMB_C0_IDX);
     }
-    DL_Timer_startCounter(MOTOR_PID_INST);
-    NVIC_EnableIRQ(MOTOR_PID_INST_INT_IRQN);
+
+    // 启动PID定时器（只需初始化一次）
+    static uint8_t pid_timer_started = 0;
+    if(!pid_timer_started){
+        DL_Timer_startCounter(MOTOR_PID_INST);
+        NVIC_EnableIRQ(MOTOR_PID_INST_INT_IRQN);
+        pid_timer_started = 1;
+    }
 }
 
+/*
+ *  ========================================
+ *  设置电机占空比
+ *  duty: 0~4000
+ *  ========================================
+ */
 void motor_set_duty(uint8_t motor_id, uint32_t duty)
 {
     // 限幅输出：确保duty在0~4000范围内
     if(duty > 4000){
         duty = 4000;
     }
-    if(motor_id == 1){
+
+    if(motor_id == MOTOR_1){
         DL_Timer_setCaptureCompareValue(PWMA_INST, duty, GPIO_PWMA_C0_IDX);
     }
-    else if(motor_id == 2){
-        // DL_Timer_setCaptureCompareValue(PWMB_INST, speed, GPIO_PWMB_C0_IDX);
+    else if(motor_id == MOTOR_2){
+        DL_Timer_setCaptureCompareValue(PWMB_INST, duty, GPIO_PWMB_C0_IDX);
     }
 }
 
-// direction: 0 停止，1 正转，2 反转
+/*
+ *  ========================================
+ *  设置电机方向
+ *  direction: 0 停止，1 正转，2 反转
+ *  ========================================
+ */
 void motor_set_direction(uint8_t motor_id, uint8_t direction)
 {
-    if(motor_id == 1){
+    if(motor_id == MOTOR_1){
         if(direction == 0){
+            // 停止：AIN1=1, AIN2=1
             DL_GPIO_setPins(DC_MOTOR_AIN1_PORT, DC_MOTOR_AIN1_PIN);
             DL_GPIO_setPins(DC_MOTOR_AIN2_PORT, DC_MOTOR_AIN2_PIN);
         }
         else if(direction == 1){
+            // 正转：AIN1=1, AIN2=0
             DL_GPIO_setPins(DC_MOTOR_AIN1_PORT, DC_MOTOR_AIN1_PIN);
             DL_GPIO_clearPins(DC_MOTOR_AIN2_PORT, DC_MOTOR_AIN2_PIN);
         }
         else if(direction == 2){
+            // 反转：AIN1=0, AIN2=1
             DL_GPIO_clearPins(DC_MOTOR_AIN1_PORT, DC_MOTOR_AIN1_PIN);
             DL_GPIO_setPins(DC_MOTOR_AIN2_PORT, DC_MOTOR_AIN2_PIN);
         }
     }
-    else if(motor_id == 2){
-        // if(direction == 0){
-        //     DL_GPIO_setPins(DC_MOTOR_BIN1_PORT, DC_MOTOR_BIN1_PIN);
-        //     DL_GPIO_setPins(DC_MOTOR_BIN2_PORT, DC_MOTOR_BIN2_PIN);
-        // }
-        // else if(direction == 1){
-        //     DL_GPIO_setPins(DC_MOTOR_BIN1_PORT, DC_MOTOR_BIN1_PIN);
-        //     DL_GPIO_clearPins(DC_MOTOR_BIN2_PORT, DC_MOTOR_BIN2_PIN);
-        // }
-        // else if(direction == 2){
-        //     DL_GPIO_clearPins(DC_MOTOR_BIN1_PORT, DC_MOTOR_BIN1_PIN);
-        //     DL_GPIO_setPins(DC_MOTOR_BIN2_PORT, DC_MOTOR_BIN2_PIN);
-        // }
+    else if(motor_id == MOTOR_2){
+        if(direction == 0){
+            // 停止：BIN1=1, BIN2=1
+            DL_GPIO_setPins(DC_MOTOR_BIN1_PORT, DC_MOTOR_BIN1_PIN);
+            DL_GPIO_setPins(DC_MOTOR_BIN2_PORT, DC_MOTOR_BIN2_PIN);
+        }
+        else if(direction == 1){
+            // 正转：BIN1=1, BIN2=0
+            DL_GPIO_setPins(DC_MOTOR_BIN1_PORT, DC_MOTOR_BIN1_PIN);
+            DL_GPIO_clearPins(DC_MOTOR_BIN2_PORT, DC_MOTOR_BIN2_PIN);
+        }
+        else if(direction == 2){
+            // 反转：BIN1=0, BIN2=1
+            DL_GPIO_clearPins(DC_MOTOR_BIN1_PORT, DC_MOTOR_BIN1_PIN);
+            DL_GPIO_setPins(DC_MOTOR_BIN2_PORT, DC_MOTOR_BIN2_PIN);
+        }
     }
 }
-
-
-extern uint32_t counter_1_A;
-float speed_1 = 0;
-float speed_2 = 0;
-
-void calculate_speed(uint8_t motor_id)
-{
-    if (motor_id == 1) {
-        speed_1 = (float)counter_1_A / MOTOR_BIANMAQI * PI * MOTOR_WHEEL_D * 20; // 轮速 mm/s
-        counter_1_A = 0; // 计算完速度后清零计数器
-    }
-    if (motor_id == 2) {
-        // speed_2 = (float)counter_1_B / MOTOR_BIANMAQI * PI * MOTOR_WHEEL_D * 20; // 轮速 mm/s
-        // counter_1_B = 0; // 计算完速度后清零计数器
-    }
-}
-
-float kp = 0.2; // 比例系数
-float ki = 0.2; // 积分系数
-float kd = 0.1; // 微分系数
-
-#define ERROR_THRESHOLD 30   // 积分限幅阈值，限制积分项单次最大增量
-
-int16_t PWM_1_duty = 0;  // 改为有符号类型，防止下溢
-float target_speed_1 = 0; // 目标速度 mm/s
-// float target_speed_2 = 0; // 目标速度 mm/s
-float last_error_1 = 0;
-float current_error_1 = 0;
-float prev_error_1 = 0; // 上上次误差，用于D项
-
-void DC_MOTOR_PID(uint8_t motor_id)
-{
-    float error;
-    float delta_pwm;
-    static uint8_t stall_cnt = 0;   // 堵转持续计数
-    static uint8_t cooldown = 0;    // 冷却计数，防止重复触发
-
-    if (motor_id == 1) {
-        error = target_speed_1 - speed_1;
-        current_error_1 = error;
-
-        // 增量式PID：ΔPWM = Kp*(e[n]-e[n-1]) + Ki*e[n] + Kd*(e[n]-2*e[n-1]+e[n-2])
-        delta_pwm = kp * (current_error_1 - last_error_1)
-                  + ki * current_error_1
-                  + kd * (current_error_1 - 2*last_error_1 + prev_error_1);
-
-        // 积分限幅：限制积分项单次增量，减少启动超调
-        if (ki * current_error_1 > ERROR_THRESHOLD) {
-            delta_pwm = kp * (current_error_1 - last_error_1)
-                      + ERROR_THRESHOLD   // 积分项不超过阈值
-                      + kd * (current_error_1 - 2*last_error_1 + prev_error_1);
-        }
-        else if (ki * current_error_1 < -ERROR_THRESHOLD) {
-            delta_pwm = kp * (current_error_1 - last_error_1)
-                      - ERROR_THRESHOLD
-                      + kd * (current_error_1 - 2*last_error_1 + prev_error_1);
-        }
-
-        // 积分抗饱和：当PWM达到限幅且增量方向相同时，限制积分项
-        if ((PWM_1_duty >= 4000 && delta_pwm > 0) ||
-            (PWM_1_duty <= 0 && delta_pwm < 0)) {
-            // 只保留比例项和微分项，去掉积分项
-            delta_pwm = kp * (current_error_1 - last_error_1)
-                      + kd * (current_error_1 - 2*last_error_1 + prev_error_1);
-        }
-
-        PWM_1_duty += (int16_t)delta_pwm;
-
-        // 限幅输出：将PWM限制在0~4000范围内
-        if (PWM_1_duty > 4000) {
-            PWM_1_duty = 4000;
-        }
-        if (PWM_1_duty < 0) {
-            PWM_1_duty = 0;
-        }
-
-        // 堵转保护：PWM满幅但电机不转（如电机断电），持续一段时间后重置PID状态
-        if (cooldown > 0) {
-            cooldown--;  // 冷却期倒数
-        } else if (PWM_1_duty >= 3500 && speed_1 < 15.0f) {
-            stall_cnt++;
-            if (stall_cnt > 15) {  // 持续750ms，判定为堵转
-                PWM_1_duty = 0;
-                last_error_1 = 0;
-                prev_error_1 = 0;
-                stall_cnt = 0;
-                cooldown = 50;     // 冷却2.5秒
-            }
-        } else {
-            stall_cnt = 0;
-        }
-
-        prev_error_1 = last_error_1;
-        last_error_1 = current_error_1;
-        motor_set_duty(motor_id, (uint16_t)PWM_1_duty);
-    }
-    if (motor_id == 2) {
-        // error = target_speed - speed_2;
-        // uint32_t duty = (uint32_t)(error * 100);
-        // motor_set_duty(motor_id, duty);
-    }
-}
-
-void MOTOR_PID_INST_IRQHandler()
-{
-    static uint8_t vofa_cnt = 0;  // VOFA发送计数器
-
-    switch (DL_Timer_getPendingInterrupt(MOTOR_PID_INST))
-    {
-    case DL_TIMER_IIDX_LOAD:
-        calculate_speed(1);
-        DC_MOTOR_PID(1);
-
-        // 每10次PID中断发送一次数据（500ms）
-        vofa_cnt++;
-        if (vofa_cnt >= 10) {
-            vofa_cnt = 0;
-            float vofa_data[4];
-            vofa_data[0] = target_speed_1;
-            vofa_data[1] = speed_1;
-            vofa_data[2] = (float)PWM_1_duty;
-            vofa_data[3] = target_speed_1 - speed_1;
-            VOFA_SendFrame(PRINT_INST, vofa_data, 4);
-        }
-        break;
-
-    default:
-        break;
-    }
-}
-
-
-
