@@ -8,7 +8,7 @@
 void motor_init(uint8_t motor_id)
 {
     // 使能TB6612
-    DL_GPIO_setPins(DC_MOTOR_STBY_PORT, DC_MOTOR_STBY_PIN);
+    // DL_GPIO_setPins(DC_MOTOR_STBY_PORT, DC_MOTOR_STBY_PIN);
 
     if(motor_id == MOTOR_1){
         // 启动电机1的PWM定时器
@@ -74,14 +74,14 @@ void motor_set_direction(uint8_t motor_id, uint8_t direction)
             DL_GPIO_setPins(DC_MOTOR_AIN2_PORT, DC_MOTOR_AIN2_PIN);
         }
         else if(direction == 1){
-            // 正转：AIN1=1, AIN2=0
-            DL_GPIO_setPins(DC_MOTOR_AIN1_PORT, DC_MOTOR_AIN1_PIN);
-            DL_GPIO_clearPins(DC_MOTOR_AIN2_PORT, DC_MOTOR_AIN2_PIN);
-        }
-        else if(direction == 2){
-            // 反转：AIN1=0, AIN2=1
+            // 正转（前进）：AIN1=0, AIN2=1
             DL_GPIO_clearPins(DC_MOTOR_AIN1_PORT, DC_MOTOR_AIN1_PIN);
             DL_GPIO_setPins(DC_MOTOR_AIN2_PORT, DC_MOTOR_AIN2_PIN);
+        }
+        else if(direction == 2){
+            // 反转（后退）：AIN1=1, AIN2=0
+            DL_GPIO_setPins(DC_MOTOR_AIN1_PORT, DC_MOTOR_AIN1_PIN);
+            DL_GPIO_clearPins(DC_MOTOR_AIN2_PORT, DC_MOTOR_AIN2_PIN);
         }
     }
     else if(motor_id == MOTOR_2){

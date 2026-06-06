@@ -1,6 +1,7 @@
 #include "pid.h"
 #include "motor.h"
 #include "uart.h"
+#include "tracking.h"
 
 /*
  *  ========================================
@@ -21,6 +22,19 @@ float ki_2 = 0.2;   // 积分系数
 float kd_2 = 0.1;   // 微分系数
 
 #define ERROR_THRESHOLD 30   // 积分限幅阈值，限制积分项单次最大增量
+
+/*
+ *  ========================================
+ *  循迹控制参数
+ *  ========================================
+ */
+#define TRACKING_KP  35.0f    // 循迹比例系数
+#define TRACKING_KD  5.0f    // 循迹微分系数
+#define BASE_SPEED   120     // 循迹基础速度
+
+// 循迹器实例（在main.c中定义，这里extern引用）
+extern LineTracker line_tracker;
+extern float tracking_last_error;
 
 /*
  *  ========================================
@@ -120,17 +134,17 @@ void pid_set_params(uint8_t motor_id, float kp, float ki, float kd)
  *  ========================================
  *  速度计算函数
  *  轮速 = 编码器计数 / 编码器线数 * π * 轮径 * 采样频率
- *  采样频率 = 1/0.05s = 20
+ *  采样频率 = 1/0.01s = 100
  *  ========================================
  */
 void calculate_speed(uint8_t motor_id)
 {
     if (motor_id == MOTOR_1) {
-        speed_1 = (float)counter_1_A / MOTOR_BIANMAQI * PI * MOTOR_WHEEL_D * 20;
+        speed_1 = (float)counter_1_A / MOTOR_BIANMAQI * PI * MOTOR_WHEEL_D * 100;
         counter_1_A = 0;
     }
     else if (motor_id == MOTOR_2) {
-        speed_2 = (float)counter_2_A / MOTOR_BIANMAQI * PI * MOTOR_WHEEL_D * 20;
+        speed_2 = (float)counter_2_A / MOTOR_BIANMAQI * PI * MOTOR_WHEEL_D * 100;
         counter_2_A = 0;
     }
 }
@@ -272,7 +286,38 @@ void DC_MOTOR_PID(uint8_t motor_id)
 
 /*
  *  ========================================
- *  PID定时器中断服务函数 (50ms周期)
+ *  循迹控制函数（在定时器中断中调用）
+ *  读取传感器 -> 计算位置 -> PD输出 -> 差速转向
+ *  ========================================
+ */
+void tracking_control(void)
+{
+    // 更新循迹传感器
+    LineTracker_Update(&line_tracker);
+
+    // 计算循迹PD输出
+    float tracking_output = LineTracker_GetPIDOutput(&line_tracker,
+                                TRACKING_KP, TRACKING_KD,
+                                &tracking_last_error);
+
+    // 差速转向：左轮加修正，右轮减修正
+    float left_speed = BASE_SPEED + tracking_output;
+    float right_speed = BASE_SPEED - tracking_output;
+
+    // 限幅保护
+    if (left_speed < 0) left_speed = 0;
+    if (left_speed > 400) left_speed = 400;
+    if (right_speed < 0) right_speed = 0;
+    if (right_speed > 400) right_speed = 400;
+
+    // 设置目标速度
+    pid_set_target_speed(MOTOR_1, left_speed);
+    pid_set_target_speed(MOTOR_2, right_speed);
+}
+
+/*
+ *  ========================================
+ *  PID定时器中断服务函数 (10ms周期)
  *  ========================================
  */
 void MOTOR_PID_INST_IRQHandler()
@@ -282,8 +327,8 @@ void MOTOR_PID_INST_IRQHandler()
     switch (DL_Timer_getPendingInterrupt(MOTOR_PID_INST))
     {
     case DL_TIMER_IIDX_LOAD:
-        // 诊断：翻转LED1确认PID中断在触发
-        DL_GPIO_togglePins(LED_PORT, LED_LED1_PIN);
+        // 执行循迹控制（更新目标速度）
+        tracking_control();
 
         // 计算速度
         calculate_speed(MOTOR_1);
@@ -293,16 +338,11 @@ void MOTOR_PID_INST_IRQHandler()
         DC_MOTOR_PID(MOTOR_1);
         DC_MOTOR_PID(MOTOR_2);
 
-        // 每10次中断发送一次VOFA数据 (500ms)
+        // 每10次中断发送一次串口数据 (100ms)
         vofa_cnt++;
         if (vofa_cnt >= 10) {
             vofa_cnt = 0;
-            float vofa_data[4];
-            vofa_data[0] = target_speed_1;  // 电机1目标速度
-            vofa_data[1] = speed_1;         // 电机1实际速度
-            vofa_data[2] = target_speed_2;  // 电机2目标速度
-            vofa_data[3] = speed_2;         // 电机2实际速度
-            VOFA_SendFrame(PRINT_INST, vofa_data, 4);
+            UART_SendSensorData(PRINT_INST);
         }
         break;
 

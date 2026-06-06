@@ -32,108 +32,59 @@
 
 #include "ti_msp_dl_config.h"
 #include "delay.h"
-#include "oled.h"
+// #include "oled.h"  // OLED已禁用，引脚已删除
 #include <stdio.h>
 #include "uart.h"
 #include "key.h"
 #include "motor.h"
 #include "pid.h"
+#include "tracking.h"
 
 int status = 0;
+
+// 循迹器实例
+LineTracker line_tracker;
+float tracking_last_error = 0;
 
 int main(void)
 {
     SYSCFG_DL_init();
-    OLED_Init();
-    OLED_ColorTurn(0);//0正常显示，1 反色显示
-    OLED_DisplayTurn(0);//0正常显示 1 屏幕翻转显示
-    OLED_Clear();
-    // NVIC_EnableIRQ(PRINT_INST_INT_IRQN);
+
+    // OLED初始化（已禁用，引脚已删除）
+    // OLED_Init();
+    // OLED_ColorTurn(0);
+    // OLED_DisplayTurn(0);
+    // OLED_Clear();
+
+    /*
+     * 集中使能所有NVIC中断
+     * GPIO_MULTIPLE_GPIOB_INT_IRQN = DC_MOTOR_GPIOA_INT_IRQN = GROUP1 (IRQ 1)
+     * 处理：按键(PB6/PB7)、编码器(PA17/PB8/PB9)
+     */
     NVIC_EnableIRQ(GPIO_MULTIPLE_GPIOB_INT_IRQN);
-    NVIC_EnableIRQ(DC_MOTOR_GPIOA_INT_IRQN);
-    // DL_ADC12_enableConversions(xuanniu_INST);
-    // DL_Timer_startCounter(SERVO_INST);
-    // DL_Timer_setCaptureCompareValue(SERVO_INST, 50, GPIO_SERVO_C1_IDX);
+    NVIC_EnableIRQ(PRINT_INST_INT_IRQN);  // 使能UART中断
+
     motor_init(MOTOR_1);
     motor_init(MOTOR_2);
-    pid_set_target_speed(MOTOR_1, 300);
-    pid_set_target_speed(MOTOR_2, 300);
 
-    // 设置电机方向：1正转
+    // 初始化循迹器
+    LineTracker_Init(&line_tracker);
+
+    // 设置电机方向：都前进
     motor_set_direction(MOTOR_1, 1);
     motor_set_direction(MOTOR_2, 1);
 
+    /*
+     * PID控制定时器 (TIMA0, IRQ 18)
+     * 10ms周期，执行循迹控制、速度计算和PID控制
+     * 循迹控制已在中断中集成，主循环无需处理
+     */
+    NVIC_EnableIRQ(MOTOR_PID_INST_INT_IRQN);
+
     while (1) {
+        // 主循环空闲，所有控制逻辑在定时器中断中执行
         // LED0闪烁，表示程序运行正常
         DL_GPIO_togglePins(LED_PORT, LED_LED0_PIN);
         delay_ms(500);
-        // 手动调用PID
-        calculate_speed(MOTOR_1);
-        calculate_speed(MOTOR_2);
-        DC_MOTOR_PID(MOTOR_1);
-        DC_MOTOR_PID(MOTOR_2);
-        // VOFA输出4通道数据
-        float vofa_data[4];
-        vofa_data[0] = target_speed_1;
-        vofa_data[1] = speed_1;
-        vofa_data[2] = target_speed_2;
-        vofa_data[3] = speed_2;
-        VOFA_SendFrame(PRINT_INST, vofa_data, 4);
-        
-
-        
-        
-        
-        
-        // // 通知ADC开始采样
-        // DL_ADC12_startConversion(xuanniu_INST);
-
-        // //等Adc采样完
-        // delay_ms(10);
-
-        // // 获取ADC采样结果
-        // uint16_t adc_result = DL_ADC12_getMemResult(xuanniu_INST, xuanniu_ADCMEM_0);
-        // float_t adc_value = adc_result * xuanniu_ADCMEM_0_REF_VOLTAGE_V / 4096.0; // Assuming 12-bit ADC resolution
-        
-        // char oled_str[50];
-        // sprintf(oled_str, "ADC: %.2f V", adc_value);
-        // OLED_ShowString(0, 32, (u8 *)oled_str, 16);
-        // OLED_Refresh();
-        
-
-        // if(status == 0){
-        //     OLED_Clear();
-        //     OLED_ShowString(0, 0, (u8 *)"status: 0", 16);
-        //     OLED_Refresh();
-        // } 
-        // else if(status == 1){
-        //     OLED_Clear();
-        //     OLED_ShowString(0, 0, (u8 *)"status: 1", 16);
-        //     OLED_Refresh();
-        // }
-        // else if(status == 2){
-        //     OLED_Clear();
-        //     OLED_ShowString(0, 0, (u8 *)"status: 2", 16);
-        //     OLED_Refresh();
-        // }
-        
-
-        // Toggle the LED every 500 ms
-        // char oled_str[50];
-        // int int_a = 20;
-        // sprintf(oled_str, "Integer: %d", int_a);
-        // OLED_ShowString(0, 46, (u8 *)oled_str, 16);
-        // OLED_Refresh();
-        
-
-        // OLED_ShowString(0, 0, (u8 *)"Hello, TI!", 16);
-        // OLED_Refresh();
-        // delay_ms(500);
-        // DL_GPIO_clearPins(LED_PORT, LED_LED0_PIN);
-        // DL_GPIO_clearPins(LED_PORT, LED_LED1_PIN);
-        // delay_ms(500);
-        // DL_GPIO_setPins(LED_PORT, LED_LED0_PIN);
-        // DL_GPIO_setPins(LED_PORT, LED_LED1_PIN);
-        // UART_send_string(PRINT_INST, "hello, ti!\n");
     }
 }

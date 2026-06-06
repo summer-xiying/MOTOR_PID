@@ -1,4 +1,9 @@
 #include "uart.h"
+#include "tracking.h"
+#include <stdio.h>
+
+// 循迹器实例（在main.c中定义）
+extern LineTracker line_tracker;
 
 void UART_send_char(UART_Regs *uart, const uint8_t chr)
 {
@@ -35,6 +40,24 @@ void VOFA_SendFrame(UART_Regs *uart, float *data, uint8_t len)
     UART_send_char(uart, 0x00);
     UART_send_char(uart, 0x80);
     UART_send_char(uart, 0x7F);
+}
+
+// 发送8路灰度传感器数据（ASCII文本格式）
+// 输出示例: "00011000 pos:-0.13\r\n"
+void UART_SendSensorData(UART_Regs *uart)
+{
+    char buf[48];
+    sprintf(buf, "%d%d%d%d%d%d%d%d pos:%.2f\r\n",
+        LineTracker_GetSensorValue(0),
+        LineTracker_GetSensorValue(1),
+        LineTracker_GetSensorValue(2),
+        LineTracker_GetSensorValue(3),
+        LineTracker_GetSensorValue(4),
+        LineTracker_GetSensorValue(5),
+        LineTracker_GetSensorValue(6),
+        LineTracker_GetSensorValue(7),
+        line_tracker.position);
+    UART_send_string(uart, buf);
 }
 
 void PRINT_INST_IRQHandler()

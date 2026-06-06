@@ -1,3 +1,5 @@
+#if 0  /* OLED已禁用，I2C引脚已删除，保留代码供后续参考 */
+
 #include "oled.h"
 #include "stdlib.h"
 #include "oledfont.h"
@@ -30,28 +32,28 @@ void OLED_DisplayTurn(u8 i)
 void OLED_WR_Byte(uint8_t dat, uint8_t mode)
 {
     uint8_t txData[2];
-    
+
     // 控制字节: 0x00为命令, 0x40为数据
-    txData[0] = mode ? 0x40 : 0x00; 
+    txData[0] = mode ? 0x40 : 0x00;
     txData[1] = dat;
 
     // 1. 等待 I2C 彻底空闲
-    while (!(DL_I2C_getControllerStatus(OLED_INST) & DL_I2C_CONTROLLER_STATUS_IDLE));
-    
-    // 2. 将 2 个字节填入发送 FIFO
-    DL_I2C_fillControllerTXFIFO(OLED_INST, txData, 2);
-    
-    // 3. 启动传输
-    DL_I2C_startControllerTransfer(OLED_INST, 0x3C, DL_I2C_CONTROLLER_DIRECTION_TX, 2);
-    
-    // 4. 等待总线变为 BUSY 状态 (确保硬件状态机已经启动，比 delay 更可靠)
-    while (!(DL_I2C_getControllerStatus(OLED_INST) & DL_I2C_CONTROLLER_STATUS_BUSY_BUS));
-    
-    // 5. 再次等待 I2C 回到空闲状态 (代表本次传输真正完成)
-    while (!(DL_I2C_getControllerStatus(OLED_INST) & DL_I2C_CONTROLLER_STATUS_IDLE));
-}
+//     while (!(DL_I2C_getControllerStatus(OLED_INST) & DL_I2C_CONTROLLER_STATUS_IDLE));
 
-//开启OLED显示 
+//     // 2. 将 2 个字节填入发送 FIFO
+//     DL_I2C_fillControllerTXFIFO(OLED_INST, txData, 2);
+
+//     // 3. 启动传输
+//     DL_I2C_startControllerTransfer(OLED_INST, 0x3C, DL_I2C_CONTROLLER_DIRECTION_TX, 2);
+
+//     // 4. 等待总线变为 BUSY 状态 (确保硬件状态机已经启动，比 delay 更可靠)
+//     while (!(DL_I2C_getControllerStatus(OLED_INST) & DL_I2C_CONTROLLER_STATUS_BUSY_BUS));
+
+//     // 5. 再次等待 I2C 回到空闲状态 (代表本次传输真正完成)
+//     while (!(DL_I2C_getControllerStatus(OLED_INST) & DL_I2C_CONTROLLER_STATUS_IDLE));
+// }
+
+//开启OLED显示
 void OLED_DisPlay_On(void)
 {
 	OLED_WR_Byte(0x8D,OLED_CMD);//电荷泵使能
@@ -59,7 +61,7 @@ void OLED_DisPlay_On(void)
 	OLED_WR_Byte(0xAF,OLED_CMD);//点亮屏幕
 }
 
-//关闭OLED显示 
+//关闭OLED显示
 void OLED_DisPlay_Off(void)
 {
 	OLED_WR_Byte(0x8D,OLED_CMD);//电荷泵使能
@@ -67,7 +69,7 @@ void OLED_DisPlay_Off(void)
 	OLED_WR_Byte(0xAF,OLED_CMD);//关闭屏幕
 }
 
-//更新显存到OLED	
+//更新显存到OLED
 void OLED_Refresh(void)
 {
 	u8 i,n;
@@ -95,7 +97,7 @@ void OLED_Clear(void)
 	OLED_Refresh();//更新显示
 }
 
-//画点 
+//画点
 void OLED_DrawPoint(u8 x,u8 y)
 {
 	u8 i,m,n;
@@ -143,7 +145,7 @@ void OLED_DrawLine(u8 x1,u8 y1,u8 x2,u8 y2)
 void OLED_DrawCircle(u8 x,u8 y,u8 r)
 {
 	int a = 0, b = r, num;
-	while(2 * b * b >= r * r)      
+	while(2 * b * b >= r * r)
 	{
 		OLED_DrawPoint(x + a, y - b);
 		OLED_DrawPoint(x - a, y - b);
@@ -153,7 +155,7 @@ void OLED_DrawCircle(u8 x,u8 y,u8 r)
 		OLED_DrawPoint(x + b, y - a);
 		OLED_DrawPoint(x - b, y - a);
 		OLED_DrawPoint(x - b, y + a);
-		
+
 		a++;
 		num = (a * a + b * b) - r*r;
 		if(num > 0) { b--; a--; }
@@ -165,15 +167,15 @@ void OLED_ShowChar(u8 x,u8 y,u8 chr,u8 size1)
 {
 	u8 i,m,temp,size2,chr1;
 	u8 y0=y;
-	size2=(size1/8+((size1%8)?1:0))*(size1/2);  
-	chr1=chr-' ';  
+	size2=(size1/8+((size1%8)?1:0))*(size1/2);
+	chr1=chr-' ';
 	for(i=0;i<size2;i++)
 	{
-		if(size1==12) {temp=asc2_1206[chr1][i];} 
-		else if(size1==16) {temp=asc2_1608[chr1][i];} 
-		else if(size1==24) {temp=asc2_2412[chr1][i];} 
+		if(size1==12) {temp=asc2_1206[chr1][i];}
+		else if(size1==16) {temp=asc2_1608[chr1][i];}
+		else if(size1==24) {temp=asc2_2412[chr1][i];}
 		else return;
-		for(m=0;m<8;m++)           
+		for(m=0;m<8;m++)
 		{
 			if(temp&0x80)OLED_DrawPoint(x,y);
 			else OLED_ClearPoint(x,y);
@@ -242,7 +244,7 @@ void OLED_ShowChinese(u8 x,u8 y,u8 num,u8 size1)
 			else if(size1==32) {temp=Hzk3[chr1][i];}
 			else if(size1==64) {temp=Hzk4[chr1][i];}
 			else return;
-						
+
 			for(m=0;m<8;m++)
 			{
 				if(temp&0x01)OLED_DrawPoint(x,y);
@@ -266,7 +268,7 @@ void OLED_WR_BP(u8 x,u8 y)
 }
 
 //显示图片
-void OLED_ShowPicture(u8 x0,u8 y0,u8 x1,u8 y1,u8 BMP[])
+void OLED_ShowPicture(u8 x0,u8 y0,u8 x1,u8 y1, u8 BMP[])
 {
 	u32 j=0;
 	u8 x=0,y=0;
@@ -288,7 +290,7 @@ void OLED_Init(void)
 {
 	// 4针OLED没有RST引脚，直接延时等待屏幕内部RC电路上电复位完成
 	delay_ms(100);
-	
+
 	OLED_WR_Byte(0xAE,OLED_CMD);//--turn off oled panel
 	OLED_WR_Byte(0x00,OLED_CMD);//---set low column address
 	OLED_WR_Byte(0x10,OLED_CMD);//---set high column address
@@ -315,7 +317,9 @@ void OLED_Init(void)
 	OLED_WR_Byte(0x8D,OLED_CMD);//--set Charge Pump enable/disable
 	OLED_WR_Byte(0x14,OLED_CMD);//--set(0x10) disable
 	OLED_WR_Byte(0xA4,OLED_CMD);// Disable Entire Display On (0xa4/0xa5)
-	OLED_WR_Byte(0xA6,OLED_CMD);// Disable Inverse Display On (0xa6/a7) 
+	OLED_WR_Byte(0xA6,OLED_CMD);// Disable Inverse Display On (0xa6/a7)
 	OLED_WR_Byte(0xAF,OLED_CMD);
 	OLED_Clear();
 }
+
+#endif  /* OLED已禁用 */
