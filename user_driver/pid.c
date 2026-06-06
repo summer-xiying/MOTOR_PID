@@ -2,6 +2,7 @@
 #include "motor.h"
 #include "uart.h"
 #include "tracking.h"
+#include <math.h>
 
 /*
  *  ========================================
@@ -28,9 +29,11 @@ float kd_2 = 0.1;   // 微分系数
  *  循迹控制参数
  *  ========================================
  */
-#define TRACKING_KP  35.0f    // 循迹比例系数
-#define TRACKING_KD  5.0f    // 循迹微分系数
-#define BASE_SPEED   120     // 循迹基础速度
+#define TRACKING_KP  50.0f    // 循迹比例系数
+#define TRACKING_KD  15.0f   // 循迹微分系数
+#define SPEED_HIGH   180     // 直线速度
+#define SPEED_LOW    80      // 弯道速度
+#define SPEED_SWITCH_THRESH 1.0f  // 速度切换阈值
 
 // 循迹器实例（在main.c中定义，这里extern引用）
 extern LineTracker line_tracker;
@@ -300,9 +303,13 @@ void tracking_control(void)
                                 TRACKING_KP, TRACKING_KD,
                                 &tracking_last_error);
 
+    // 动态调速：直线高速，弯道低速
+    float base_speed = (fabsf(line_tracker.position) < SPEED_SWITCH_THRESH)
+                       ? SPEED_HIGH : SPEED_LOW;
+
     // 差速转向：左轮加修正，右轮减修正
-    float left_speed = BASE_SPEED + tracking_output;
-    float right_speed = BASE_SPEED - tracking_output;
+    float left_speed = base_speed + tracking_output;
+    float right_speed = base_speed - tracking_output;
 
     // 限幅保护
     if (left_speed < 0) left_speed = 0;
