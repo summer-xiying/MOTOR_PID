@@ -81,10 +81,29 @@ int main(void)
      */
     NVIC_EnableIRQ(MOTOR_PID_INST_INT_IRQN);
 
+    // 启动后立即发送测试字符串，验证UART硬件是否工作
+    UART_send_string(PRINT_INST, "UART OK\r\n");
+
+    uint32_t led_next_toggle = 0;
+    uint8_t led_state = 0;
+
     while (1) {
-        // 主循环空闲，所有控制逻辑在定时器中断中执行
-        // LED0闪烁，表示程序运行正常
-        DL_GPIO_togglePins(LED_PORT, LED_LED0_PIN);
-        delay_ms(500);
+        // 检查串口发送标志（由定时器ISR设置，每100ms一次）
+        if (uart_send_flag) {
+            uart_send_flag = 0;
+            UART_SendSensorData(PRINT_INST);
+        }
+
+        // LED闪烁：1秒周期（亮0.5s灭0.5s）
+        // led_tick由定时器ISR每10ms递增，50次=500ms
+        if (led_tick >= led_next_toggle) {
+            led_next_toggle = led_tick + 50;
+            led_state = !led_state;
+            if (led_state) {
+                DL_GPIO_setPins(LED_PORT, LED_LED0_PIN);
+            } else {
+                DL_GPIO_clearPins(LED_PORT, LED_LED0_PIN);
+            }
+        }
     }
 }

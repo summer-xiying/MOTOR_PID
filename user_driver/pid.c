@@ -9,31 +9,46 @@
  *  电机1 PID参数 (可在运行时调整)
  *  ========================================
  */
-float kp_1 = 0.2;   // 比例系数
-float ki_1 = 0.2;   // 积分系数
-float kd_1 = 0.1;   // 微分系数
+float kp_1 = 0.4;   // 比例系数（适度增大，加快响应）
+float ki_1 = 0.25;  // 积分系数（小幅增加）
+float kd_1 = 0.08;  // 微分系数（小幅减小）
 
 /*
  *  ========================================
  *  电机2 PID参数 (可在运行时调整)
  *  ========================================
  */
-float kp_2 = 0.2;   // 比例系数
-float ki_2 = 0.2;   // 积分系数
-float kd_2 = 0.1;   // 微分系数
+float kp_2 = 0.4;   // 比例系数
+float ki_2 = 0.25;  // 积分系数
+float kd_2 = 0.08;  // 微分系数
 
 #define ERROR_THRESHOLD 30   // 积分限幅阈值，限制积分项单次最大增量
+#define PWM_DEADZONE    500  // 死区补偿阈值，PWM>0且<此值时强制启动
 
 /*
  *  ========================================
  *  循迹控制参数
  *  ========================================
  */
-#define TRACKING_KP  50.0f    // 循迹比例系数
-#define TRACKING_KD  15.0f   // 循迹微分系数
-#define SPEED_HIGH   180     // 直线速度
-#define SPEED_LOW    80      // 弯道速度
-#define SPEED_SWITCH_THRESH 1.0f  // 速度切换阈值
+// 直线模式参数
+#define KP_STRAIGHT   12.0f   // 柔和修正
+#define KD_STRAIGHT   50.0f   // 强阻尼抑制振荡
+
+// 弯道模式参数
+#define KP_CURVE      12.0f   // 增大响应，提供足够差速
+#define KD_CURVE      48.0f   // 适度阻尼，允许灵活转向
+
+// 统一速度
+#define BASE_SPEED    120     // 基础速度
+
+// 模式切换阈值（加权求和后position范围±15，阈值相应提高）
+#define MODE_SWITCH_THRESH 2.5f  // |position| >= 此值切换为弯道模式
+
+// 差速补偿参数（让左右轮实际速度一致）
+#define DIFF_KP       0.5f    // 差速比例系数
+#define DIFF_KI       0.1f    // 差速积分系数
+#define DIFF_KD       0.05f   // 差速微分系数
+#define DIFF_LIMIT    30.0f   // 差速补偿限幅
 
 // 循迹器实例（在main.c中定义，这里extern引用）
 extern LineTracker line_tracker;
@@ -204,6 +219,11 @@ void DC_MOTOR_PID(uint8_t motor_id)
             PWM_1_duty = 0;
         }
 
+        // 死区补偿：小PWM时强制启动电机
+        if (PWM_1_duty > 0 && PWM_1_duty < PWM_DEADZONE) {
+            PWM_1_duty = PWM_DEADZONE;
+        }
+
         // 堵转保护
         if (cooldown_1 > 0) {
             cooldown_1--;
@@ -265,6 +285,11 @@ void DC_MOTOR_PID(uint8_t motor_id)
             PWM_2_duty = 0;
         }
 
+        // 死区补偿：小PWM时强制启动电机
+        if (PWM_2_duty > 0 && PWM_2_duty < PWM_DEADZONE) {
+            PWM_2_duty = PWM_DEADZONE;
+        }
+
         // 堵转保护
         if (cooldown_2 > 0) {
             cooldown_2--;
@@ -295,32 +320,88 @@ void DC_MOTOR_PID(uint8_t motor_id)
  */
 void tracking_control(void)
 {
+    // 差速补偿PID变量
+    static float diff_integral = 0;
+    static float diff_last_error = 0;
+
     // 更新循迹传感器
     LineTracker_Update(&line_tracker);
 
+    // 根据弯道程度选择KP/KD（速度统一）
+    float kp, kd;
+    uint8_t is_curve;
+    if (fabsf(line_tracker.position) < MODE_SWITCH_THRESH) {
+        // 直线模式
+        kp = KP_STRAIGHT;
+        kd = KD_STRAIGHT;
+        is_curve = 0;
+    } else {
+        // 弯道模式
+        kp = KP_CURVE;
+        kd = KD_CURVE;
+        is_curve = 1;
+    }
+
     // 计算循迹PD输出
     float tracking_output = LineTracker_GetPIDOutput(&line_tracker,
-                                TRACKING_KP, TRACKING_KD,
+                                kp, kd,
                                 &tracking_last_error);
 
-    // 动态调速：直线高速，弯道低速
-    float base_speed = (fabsf(line_tracker.position) < SPEED_SWITCH_THRESH)
-                       ? SPEED_HIGH : SPEED_LOW;
+    // 差速补偿：仅直线模式启用，弯道时禁用并清零积分项
+    float diff_compensation = 0;
+    if (!is_curve) {
+        // 直线模式：计算差速补偿
+        float diff_error = speed_1 - speed_2;
+        diff_integral += diff_error;
+        // 积分限幅
+        if (diff_integral > DIFF_LIMIT) diff_integral = DIFF_LIMIT;
+        if (diff_integral < -DIFF_LIMIT) diff_integral = -DIFF_LIMIT;
+        float diff_derivative = diff_error - diff_last_error;
+        diff_last_error = diff_error;
 
-    // 差速转向：左轮加修正，右轮减修正
-    float left_speed = base_speed + tracking_output;
-    float right_speed = base_speed - tracking_output;
+        // 差速补偿量
+        diff_compensation = DIFF_KP * diff_error
+                          + DIFF_KI * diff_integral
+                          + DIFF_KD * diff_derivative;
 
-    // 限幅保护
-    if (left_speed < 0) left_speed = 0;
+        // 限幅补偿量
+        if (diff_compensation > DIFF_LIMIT) diff_compensation = DIFF_LIMIT;
+        if (diff_compensation < -DIFF_LIMIT) diff_compensation = -DIFF_LIMIT;
+    } else {
+        // 弯道模式：清零积分项，防止累积干扰
+        diff_integral = 0;
+        diff_last_error = 0;
+    }
+
+    // 差速转向 + 差速补偿
+    float left_speed = BASE_SPEED + tracking_output - diff_compensation;
+    float right_speed = BASE_SPEED - tracking_output + diff_compensation;
+
+    // 限幅保护（允许内轮停止或反转）
+    if (left_speed < -100) left_speed = -100;
     if (left_speed > 400) left_speed = 400;
-    if (right_speed < 0) right_speed = 0;
+    if (right_speed < -100) right_speed = -100;
     if (right_speed > 400) right_speed = 400;
 
     // 设置目标速度
     pid_set_target_speed(MOTOR_1, left_speed);
     pid_set_target_speed(MOTOR_2, right_speed);
 }
+
+/*
+ *  ========================================
+ *  串口发送标志（由ISR设置，主循环清除）
+ *  ========================================
+ */
+volatile uint8_t uart_send_flag = 0;
+
+/*
+ *  ========================================
+ *  LED闪烁计数器（由ISR递增，主循环使用）
+ *  10ms中断一次，100次 = 1秒
+ *  ========================================
+ */
+volatile uint32_t led_tick = 0;
 
 /*
  *  ========================================
@@ -345,11 +426,14 @@ void MOTOR_PID_INST_IRQHandler()
         DC_MOTOR_PID(MOTOR_1);
         DC_MOTOR_PID(MOTOR_2);
 
-        // 每10次中断发送一次串口数据 (100ms)
+        // LED计时（10ms递增）
+        led_tick++;
+
+        // 每10次中断设置串口发送标志 (100ms)
         vofa_cnt++;
         if (vofa_cnt >= 10) {
             vofa_cnt = 0;
-            UART_SendSensorData(PRINT_INST);
+            uart_send_flag = 1;
         }
         break;
 

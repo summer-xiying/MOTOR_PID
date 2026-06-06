@@ -29,10 +29,17 @@ int LineTracker_Init(LineTracker *lt)
 {
     if (lt == NULL) return -1;
 
-    // 初始化权重：[-3.5, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5]
-    for (int i = 0; i < SENSOR_COUNT; i++) {
-        sensor_weights[i] = (float)(i * 2 - (SENSOR_COUNT - 1)) / 2.0f;
-    }
+    // 初始化权重：外侧更大，增强弯道响应
+    // P1=-5.0, P2=-3.5, P3=-1.5, P4=-0.5, P5=0.5, P6=1.5, P7=3.5, P8=5.0
+    sensor_weights[0] = -5.0f;
+    sensor_weights[1] = -3.5f;
+    sensor_weights[2] = -1.5f;
+    sensor_weights[3] = -0.5f;
+    sensor_weights[4] = 0.5f;
+    sensor_weights[5] = 1.5f;
+    sensor_weights[6] = 3.5f;
+    sensor_weights[7] = 5.0f;
+
     lt->position = 0;
     lt->on_line = 0;
     lt->cross_detected = 0;
@@ -54,21 +61,24 @@ int LineTracker_Update(LineTracker *lt)
         lt->sensor_raw[i] = (pin_value == 0) ? 1 : 0;
     }
 
-    // 加权平均计算位置
+    // 加权求和计算位置（不除以数量，让多个传感器时position更大）
     float sum = 0;
-    float weight_sum = 0;
     int active_count = 0;
 
     for (int i = 0; i < SENSOR_COUNT; i++) {
         if (lt->sensor_raw[i]) {
             sum += sensor_weights[i];
-            weight_sum += 1.0f;
             active_count++;
         }
     }
 
     if (active_count > 0) {
-        lt->position = sum / weight_sum;
+        // 低通滤波：平滑位置变化，减少剧烈摆动
+        // alpha=0.5表示新旧值各占一半
+        static float filtered_position = 0;
+        float alpha = 0.5f;
+        filtered_position = alpha * sum + (1.0f - alpha) * filtered_position;
+        lt->position = filtered_position;
         lt->on_line = 1;
     } else {
         lt->on_line = 0;

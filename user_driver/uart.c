@@ -7,7 +7,10 @@ extern LineTracker line_tracker;
 
 void UART_send_char(UART_Regs *uart, const uint8_t chr)
 {
-    DL_UART_transmitDataBlocking(uart, chr);
+    // 等待TX FIFO有空间
+    while (DL_UART_isTXFIFOFull(uart)) {}
+    // 写入数据（非阻塞，不等待发送完成）
+    DL_UART_transmitData(uart, chr);
 }
 
 void UART_send_string(UART_Regs *uart, const char *str)
