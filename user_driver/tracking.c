@@ -102,7 +102,20 @@ float LineTracker_GetPIDOutput(LineTracker *lt,
     float error = lt->position;
     float derivative = error - *last_error;
     *last_error = error;
-    return kp * error + kd * derivative;
+
+    // D项限幅：防止位置跳变时derivative尖峰
+    #define DERIVATIVE_LIMIT 3.0f
+    if (derivative > DERIVATIVE_LIMIT) derivative = DERIVATIVE_LIMIT;
+    if (derivative < -DERIVATIVE_LIMIT) derivative = -DERIVATIVE_LIMIT;
+
+    float output = kp * error + kd * derivative;
+
+    // PD输出限幅：防止差速过大导致一正一反
+    #define TRACKING_OUTPUT_LIMIT 60.0f
+    if (output > TRACKING_OUTPUT_LIMIT) output = TRACKING_OUTPUT_LIMIT;
+    if (output < -TRACKING_OUTPUT_LIMIT) output = -TRACKING_OUTPUT_LIMIT;
+
+    return output;
 }
 
 uint8_t LineTracker_GetSensorValue(uint8_t sensor_index)

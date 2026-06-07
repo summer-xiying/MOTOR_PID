@@ -9,18 +9,18 @@
  *  电机1 PID参数 (可在运行时调整)
  *  ========================================
  */
-float kp_1 = 0.4;   // 比例系数（适度增大，加快响应）
-float ki_1 = 0.25;  // 积分系数（小幅增加）
-float kd_1 = 0.08;  // 微分系数（小幅减小）
+float kp_1 = 0.8;   // 比例系数（加快响应，追目标更快）
+float ki_1 = 0.3;   // 积分系数（稳态误差更小）
+float kd_1 = 0.12;  // 微分系数（增强阻尼，抑制超调）
 
 /*
  *  ========================================
  *  电机2 PID参数 (可在运行时调整)
  *  ========================================
  */
-float kp_2 = 0.4;   // 比例系数
-float ki_2 = 0.25;  // 积分系数
-float kd_2 = 0.08;  // 微分系数
+float kp_2 = 0.8;   // 比例系数
+float ki_2 = 0.3;   // 积分系数
+float kd_2 = 0.12;  // 微分系数
 
 #define ERROR_THRESHOLD 30   // 积分限幅阈值，限制积分项单次最大增量
 #define PWM_DEADZONE    500  // 死区补偿阈值，PWM>0且<此值时强制启动
@@ -373,9 +373,14 @@ void tracking_control(void)
         diff_last_error = 0;
     }
 
+    // 弯道减速：偏离越大速度越低，最低70%
+    float speed_factor = 1.0f - 0.05f * fabsf(line_tracker.position);
+    if (speed_factor < 0.7f) speed_factor = 0.7f;
+    float effective_speed = BASE_SPEED * speed_factor;
+
     // 差速转向 + 差速补偿
-    float left_speed = BASE_SPEED + tracking_output - diff_compensation;
-    float right_speed = BASE_SPEED - tracking_output + diff_compensation;
+    float left_speed = effective_speed + tracking_output - diff_compensation;
+    float right_speed = effective_speed - tracking_output + diff_compensation;
 
     // 限幅保护（允许内轮停止或反转）
     if (left_speed < -100) left_speed = -100;
