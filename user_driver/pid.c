@@ -22,8 +22,9 @@ float kp_2 = 0.8;   // 比例系数
 float ki_2 = 0.3;   // 积分系数
 float kd_2 = 0.12;  // 微分系数
 
-#define ERROR_THRESHOLD 30   // 积分限幅阈值，限制积分项单次最大增量
-#define PWM_DEADZONE    500  // 死区补偿阈值，PWM>0且<此值时强制启动
+#define ERROR_THRESHOLD     30     // 积分限幅阈值，限制积分项单次最大增量
+#define PWM_DEADZONE        500    // 死区补偿阈值，PWM>0且<此值时强制启动
+#define SPEED_FILTER_ALPHA  0.35f  // 速度测量低通滤波系数
 
 /*
  *  ========================================
@@ -49,6 +50,10 @@ float kd_2 = 0.12;  // 微分系数
 #define DIFF_KI       0.1f    // 差速积分系数
 #define DIFF_KD       0.05f   // 差速微分系数
 #define DIFF_LIMIT    30.0f   // 差速补偿限幅
+
+// 非对称差速参数：外轮多加速，内轮少减速，降低过弯顿挫
+#define OUTER_TURN_GAIN 1.50f
+#define INNER_TURN_GAIN 0.35f
 
 // 循迹器实例（在main.c中定义，这里extern引用）
 extern LineTracker line_tracker;
@@ -158,11 +163,13 @@ void pid_set_params(uint8_t motor_id, float kp, float ki, float kd)
 void calculate_speed(uint8_t motor_id)
 {
     if (motor_id == MOTOR_1) {
-        speed_1 = (float)counter_1_A / MOTOR_BIANMAQI * PI * MOTOR_WHEEL_D * 100;
+        float instant_speed = (float)counter_1_A / MOTOR_BIANMAQI * PI * MOTOR_WHEEL_D * 100;
+        speed_1 = SPEED_FILTER_ALPHA * instant_speed + (1.0f - SPEED_FILTER_ALPHA) * speed_1;
         counter_1_A = 0;
     }
     else if (motor_id == MOTOR_2) {
-        speed_2 = (float)counter_2_A / MOTOR_BIANMAQI * PI * MOTOR_WHEEL_D * 100;
+        float instant_speed = (float)counter_2_A / MOTOR_BIANMAQI * PI * MOTOR_WHEEL_D * 100;
+        speed_2 = SPEED_FILTER_ALPHA * instant_speed + (1.0f - SPEED_FILTER_ALPHA) * speed_2;
         counter_2_A = 0;
     }
 }
@@ -378,9 +385,15 @@ void tracking_control(void)
     if (speed_factor < 0.7f) speed_factor = 0.7f;
     float effective_speed = BASE_SPEED * speed_factor;
 
-    // 差速转向 + 差速补偿
-    float left_speed = effective_speed + tracking_output - diff_compensation;
-    float right_speed = effective_speed - tracking_output + diff_compensation;
+    // 非对称差速：外轮主动加速，内轮保留更多速度
+    float left_speed, right_speed;
+    if (tracking_output >= 0) {
+        left_speed = effective_speed + tracking_output * OUTER_TURN_GAIN - diff_compensation;
+        right_speed = effective_speed - tracking_output * INNER_TURN_GAIN + diff_compensation;
+    } else {
+        left_speed = effective_speed + tracking_output * INNER_TURN_GAIN - diff_compensation;
+        right_speed = effective_speed - tracking_output * OUTER_TURN_GAIN + diff_compensation;
+    }
 
     // 限幅保护（允许内轮停止或反转）
     if (left_speed < -100) left_speed = -100;
@@ -420,6 +433,8 @@ void MOTOR_PID_INST_IRQHandler()
     switch (DL_Timer_getPendingInterrupt(MOTOR_PID_INST))
     {
     case DL_TIMER_IIDX_LOAD:
+        DL_Timer_clearInterruptStatus(MOTOR_PID_INST, DL_TIMER_INTERRUPT_LOAD_EVENT);
+
         // 执行循迹控制（更新目标速度）
         tracking_control();
 

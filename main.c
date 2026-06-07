@@ -61,14 +61,28 @@ int main(void)
      * GPIO_MULTIPLE_GPIOB_INT_IRQN = DC_MOTOR_GPIOA_INT_IRQN = GROUP1 (IRQ 1)
      * 处理：按键(PB6/PB7)、编码器(PA17/PB8/PB9)
      */
-    NVIC_EnableIRQ(GPIO_MULTIPLE_GPIOB_INT_IRQN);
+    DL_GPIO_disableInterrupt(GPIOB, DC_MOTOR_BB_PIN);
+    DL_GPIO_clearInterruptStatus(GPIOB, KEY_KEY9_PIN |
+        KEY_KEY10_PIN |
+        DC_MOTOR_BA_PIN |
+        DC_MOTOR_BB_PIN);
+    DL_GPIO_clearInterruptStatus(GPIOA, DC_MOTOR_AA_PIN);
+    NVIC_ClearPendingIRQ(GPIO_MULTIPLE_GPIOB_INT_IRQN);
+    NVIC_ClearPendingIRQ(PRINT_INST_INT_IRQN);
     NVIC_EnableIRQ(PRINT_INST_INT_IRQN);  // 使能UART中断
-
-    motor_init(MOTOR_1);
-    motor_init(MOTOR_2);
 
     // 初始化循迹器
     LineTracker_Init(&line_tracker);
+
+    // 启动后立即发送测试字符串，验证UART硬件是否工作
+    UART_send_string(PRINT_INST, "UART OK\r\n");
+    while (!DL_UART_isTXFIFOEmpty(PRINT_INST)) {}
+    while (DL_UART_isBusy(PRINT_INST)) {}
+
+    NVIC_EnableIRQ(GPIO_MULTIPLE_GPIOB_INT_IRQN);
+
+    motor_init(MOTOR_1);
+    motor_init(MOTOR_2);
 
     // 设置电机方向：都前进
     motor_set_direction(MOTOR_1, 1);
@@ -80,9 +94,6 @@ int main(void)
      * 循迹控制已在中断中集成，主循环无需处理
      */
     NVIC_EnableIRQ(MOTOR_PID_INST_INT_IRQN);
-
-    // 启动后立即发送测试字符串，验证UART硬件是否工作
-    UART_send_string(PRINT_INST, "UART OK\r\n");
 
     uint32_t led_next_toggle = 0;
     uint8_t led_state = 0;

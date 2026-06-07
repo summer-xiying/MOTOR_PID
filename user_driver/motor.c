@@ -32,6 +32,8 @@ void motor_init(uint8_t motor_id)
     // 启动PID定时器（只需初始化一次）
     static uint8_t pid_timer_started = 0;
     if(!pid_timer_started){
+        DL_Timer_clearInterruptStatus(MOTOR_PID_INST, DL_TIMER_INTERRUPT_LOAD_EVENT);
+        NVIC_ClearPendingIRQ(MOTOR_PID_INST_INT_IRQN);
         DL_Timer_startCounter(MOTOR_PID_INST);
         NVIC_EnableIRQ(MOTOR_PID_INST_INT_IRQN);
         pid_timer_started = 1;
