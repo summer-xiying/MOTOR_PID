@@ -453,10 +453,9 @@ void PRINT_INST_IRQHandler()
  *    speed                  - 目标速度
  *    track                  - 循迹开关 (0/1)
  *    output                 - 波形输出开关 (0/1)
- *    kp_straight / kd_straight - 直线模式循迹PD参数
- *    kp_curve / kd_curve       - 弯道模式循迹PD参数
+ *    kp_track / kd_track       - 循迹PD参数（统一，不分直线弯道）
  *
- *  示例：kp:0.65\n  speed:150\n  track:1\n  kp_straight:12.0\n
+ *  示例：kp:0.65\n  speed:150\n  track:1\n  kp_track:12.0\n
  *  ========================================
  */
 void VOFA_TextCommandProcess(void)
@@ -511,32 +510,18 @@ void VOFA_TextCommandProcess(void)
             char ack[16];
             sprintf(ack, "output=%d\r\n", debug_output_enabled);
             UART_send_string(PRINT_INST, ack);
-        } else if (strcmp(name, "kp_straight") == 0) {
+        } else if (strcmp(name, "kp_track") == 0) {
             if (value >= 0 && isfinite(value)) {
-                kp_straight = value;
+                kp_track = value;
                 char ack[24];
-                sprintf(ack, "kp_straight=%.2f\r\n", value);
+                sprintf(ack, "kp_track=%.2f\r\n", value);
                 UART_send_string(PRINT_INST, ack);
             }
-        } else if (strcmp(name, "kd_straight") == 0) {
+        } else if (strcmp(name, "kd_track") == 0) {
             if (value >= 0 && isfinite(value)) {
-                kd_straight = value;
+                kd_track = value;
                 char ack[24];
-                sprintf(ack, "kd_straight=%.2f\r\n", value);
-                UART_send_string(PRINT_INST, ack);
-            }
-        } else if (strcmp(name, "kp_curve") == 0) {
-            if (value >= 0 && isfinite(value)) {
-                kp_curve = value;
-                char ack[24];
-                sprintf(ack, "kp_curve=%.2f\r\n", value);
-                UART_send_string(PRINT_INST, ack);
-            }
-        } else if (strcmp(name, "kd_curve") == 0) {
-            if (value >= 0 && isfinite(value)) {
-                kd_curve = value;
-                char ack[24];
-                sprintf(ack, "kd_curve=%.2f\r\n", value);
+                sprintf(ack, "kd_track=%.2f\r\n", value);
                 UART_send_string(PRINT_INST, ack);
             }
         }

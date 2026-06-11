@@ -9,18 +9,18 @@
  *  电机1 PID参数 (可在运行时调整)
  *  ========================================
  */
-float kp_1 = 0.8;   // 比例系数（加快响应，追目标更快）
-float ki_1 = 0.3;   // 积分系数（稳态误差更小）
-float kd_1 = 0.12;  // 微分系数（增强阻尼，抑制超调）
+float kp_1 = 2.0;   // 比例系数
+float ki_1 = 0.15;  // 积分系数
+float kd_1 = 2.5;   // 微分系数
 
 /*
  *  ========================================
  *  电机2 PID参数 (可在运行时调整)
  *  ========================================
  */
-float kp_2 = 0.8;   // 比例系数
-float ki_2 = 0.3;   // 积分系数
-float kd_2 = 0.12;  // 微分系数
+float kp_2 = 2.0;   // 比例系数
+float ki_2 = 0.15;  // 积分系数
+float kd_2 = 2.5;   // 微分系数
 
 #define ERROR_THRESHOLD     30     // 积分限幅阈值，限制积分项单次最大增量
 #define PWM_DEADZONE        500    // 死区补偿阈值，PWM>0且<此值时强制启动
@@ -33,19 +33,15 @@ float kd_2 = 0.12;  // 微分系数
  *  循迹控制参数
  *  ========================================
  */
-// 直线模式参数（可通过VOFA在线调节）
-float kp_straight = 12.0f;   // 柔和修正
-float kd_straight = 50.0f;   // 强阻尼抑制振荡
-
-// 弯道模式参数（可通过VOFA在线调节）
-float kp_curve = 12.0f;      // 增大响应，提供足够差速
-float kd_curve = 48.0f;      // 适度阻尼，允许灵活转向
+// 循迹PD参数（可通过VOFA在线调节，统一不分直线弯道）
+float kp_track = 12.0f;      // 比例系数
+float kd_track = 50.0f;      // 微分系数
 
 // 统一速度
-#define BASE_SPEED    120     // 基础速度
+#define BASE_SPEED    170     // 基础速度
 
-// 模式切换阈值（加权求和后position范围±15，阈值相应提高）
-#define MODE_SWITCH_THRESH 2.5f  // |position| >= 此值切换为弯道模式
+// 弯道判定阈值（用于差速补偿和速度策略，不影响PD参数）
+#define MODE_SWITCH_THRESH 2.5f  // |position| >= 此值判定为弯道
 
 // 差速补偿参数（让左右轮实际速度一致）
 #define DIFF_KP       0.5f    // 差速比例系数
@@ -347,20 +343,8 @@ void tracking_control(void)
         tracking_last_error = 0;
     }
 
-    // 根据弯道程度选择KP/KD（速度统一）
-    float kp_track, kd_track;
-    uint8_t is_curve;
-    if (fabsf(line_tracker.position) < MODE_SWITCH_THRESH) {
-        kp_track = kp_straight;
-        kd_track = kd_straight;
-        is_curve = 0;
-    } else {
-        kp_track = kp_curve;
-        kd_track = kd_curve;
-        is_curve = 1;
-    }
-
-    // 计算循迹PD输出
+    // 计算循迹PD输出（统一参数，不分直线弯道）
+    uint8_t is_curve = (fabsf(line_tracker.position) >= MODE_SWITCH_THRESH) ? 1 : 0;
     float tracking_output = LineTracker_GetPIDOutput(&line_tracker,
                                 kp_track, kd_track,
                                 &tracking_last_error);

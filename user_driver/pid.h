@@ -40,11 +40,9 @@ extern float kp_2;   // 比例系数
 extern float ki_2;   // 积分系数
 extern float kd_2;   // 微分系数
 
-// 循迹PD参数（可通过VOFA在线调节）
-extern float kp_straight;  // 直线模式比例系数
-extern float kd_straight;  // 直线模式微分系数
-extern float kp_curve;     // 弯道模式比例系数
-extern float kd_curve;     // 弯道模式微分系数
+// 循迹PD参数（可通过VOFA在线调节，统一不分直线弯道）
+extern float kp_track;     // 循迹比例系数
+extern float kd_track;     // 循迹微分系数
 
 // 电机1 PID状态变量
 extern float speed_1;           // 当前速度 mm/s
