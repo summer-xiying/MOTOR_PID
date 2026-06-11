@@ -98,11 +98,21 @@ int main(void)
     uint32_t led_next_toggle = 0;
     uint8_t led_state = 0;
 
+    // 启动后自动开启调试输出和循迹控制
+    WirelessTune_SetDebugOutput(1);
+    tracking_enabled = 1;
+
     while (1) {
+        // 处理在线调参命令
+        WirelessTune_Process();
+        VOFA_TextCommandProcess();
+
         // 检查串口发送标志（由定时器ISR设置，每100ms一次）
         if (uart_send_flag) {
             uart_send_flag = 0;
-            UART_SendSensorData(PRINT_INST);
+            if (WirelessTune_IsDebugOutputEnabled()) {
+                VOFA_SendPIDWaveform(PRINT_INST);
+            }
         }
 
         // LED闪烁：1秒周期（亮0.5s灭0.5s）

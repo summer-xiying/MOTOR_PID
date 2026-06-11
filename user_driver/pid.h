@@ -40,6 +40,12 @@ extern float kp_2;   // 比例系数
 extern float ki_2;   // 积分系数
 extern float kd_2;   // 微分系数
 
+// 循迹PD参数（可通过VOFA在线调节）
+extern float kp_straight;  // 直线模式比例系数
+extern float kd_straight;  // 直线模式微分系数
+extern float kp_curve;     // 弯道模式比例系数
+extern float kd_curve;     // 弯道模式微分系数
+
 // 电机1 PID状态变量
 extern float speed_1;           // 当前速度 mm/s
 extern float target_speed_1;    // 目标速度 mm/s
@@ -49,6 +55,12 @@ extern int16_t PWM_1_duty;     // 当前PWM占空比
 extern float speed_2;           // 当前速度 mm/s
 extern float target_speed_2;    // 目标速度 mm/s
 extern int16_t PWM_2_duty;     // 当前PWM占空比
+
+// 调试变量
+extern float debug_tracking_output;
+
+// 循迹开关（由WirelessTune或VOFA文本命令控制）
+extern volatile uint8_t tracking_enabled;
 
 /*
  *  ========================================
@@ -65,7 +77,7 @@ void DC_MOTOR_PID(uint8_t motor_id);
 // 设置目标速度
 void pid_set_target_speed(uint8_t motor_id, float speed);
 
-// 设置PID参数
+// 设置PID参数（支持MOTOR_1/MOTOR_2/MOTOR_BOTH=0同时设置两个）
 void pid_set_params(uint8_t motor_id, float kp, float ki, float kd);
 
 // 获取当前速度

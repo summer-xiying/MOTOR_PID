@@ -61,9 +61,10 @@ int LineTracker_Update(LineTracker *lt)
         lt->sensor_raw[i] = (pin_value == 0) ? 1 : 0;
     }
 
-    // 加权求和计算位置（不除以数量，让多个传感器时position更大）
+    // 根据传感器状态计算位置
     float sum = 0;
     int active_count = 0;
+    static float filtered_position = 0;
 
     for (int i = 0; i < SENSOR_COUNT; i++) {
         if (lt->sensor_raw[i]) {
@@ -72,21 +73,53 @@ int LineTracker_Update(LineTracker *lt)
         }
     }
 
-    if (active_count > 0) {
-        // 低通滤波：平滑位置变化，减少剧烈摆动
-        // alpha=0.5表示新旧值各占一半
-        static float filtered_position = 0;
-        float alpha = 0.5f;
-        filtered_position = alpha * sum + (1.0f - alpha) * filtered_position;
-        lt->position = filtered_position;
-        lt->on_line = 1;
-    } else {
+    lt->cross_detected = (active_count == SENSOR_COUNT) ? 1 : 0;
+
+    if (active_count == 0) {
+        lt->position = 0;
         lt->on_line = 0;
-        // 丢线时保持上一次的position，不做清零
+        filtered_position = 0;
+        return 0;
     }
 
-    // 十字路口检测（所有传感器都检测到线）
-    lt->cross_detected = (active_count == SENSOR_COUNT) ? 1 : 0;
+    if (lt->cross_detected) {
+        lt->position = 0;
+        lt->on_line = 1;
+        filtered_position = 0;
+        return 0;
+    }
+
+    // 单侧识别时按最外侧位置累计中心到边缘的权重；跨中心识别时用原始加权和
+    int leftmost = SENSOR_COUNT;
+    int rightmost = -1;
+    uint8_t has_left = 0;
+    uint8_t has_right = 0;
+    for (int i = 0; i < SENSOR_COUNT; i++) {
+        if (lt->sensor_raw[i]) {
+            if (i < leftmost) leftmost = i;
+            if (i > rightmost) rightmost = i;
+            if (i < SENSOR_COUNT / 2) has_left = 1;
+            else has_right = 1;
+        }
+    }
+
+    if (has_left && !has_right) {
+        sum = 0;
+        for (int i = leftmost; i < SENSOR_COUNT / 2; i++) {
+            sum += sensor_weights[i];
+        }
+    } else if (!has_left && has_right) {
+        sum = 0;
+        for (int i = SENSOR_COUNT / 2; i <= rightmost; i++) {
+            sum += sensor_weights[i];
+        }
+    }
+
+    // 低通滤波：平滑位置变化，减少剧烈摆动
+    float alpha = 0.5f;
+    filtered_position = alpha * sum + (1.0f - alpha) * filtered_position;
+    lt->position = filtered_position;
+    lt->on_line = 1;
 
     return 0;
 }
@@ -110,10 +143,15 @@ float LineTracker_GetPIDOutput(LineTracker *lt,
 
     float output = kp * error + kd * derivative;
 
-    // PD输出限幅：防止差速过大导致一正一反
-    #define TRACKING_OUTPUT_LIMIT 60.0f
-    if (output > TRACKING_OUTPUT_LIMIT) output = TRACKING_OUTPUT_LIMIT;
-    if (output < -TRACKING_OUTPUT_LIMIT) output = -TRACKING_OUTPUT_LIMIT;
+    // PD输出限幅：外侧传感器触发时临时增加急弯救援裕量
+    #define TRACKING_OUTPUT_LIMIT       70.0f
+    #define TRACKING_EDGE_OUTPUT_LIMIT  78.0f
+    float output_limit = TRACKING_OUTPUT_LIMIT;
+    if (lt->sensor_raw[0] || lt->sensor_raw[SENSOR_COUNT - 1]) {
+        output_limit = TRACKING_EDGE_OUTPUT_LIMIT;
+    }
+    if (output > output_limit) output = output_limit;
+    if (output < -output_limit) output = -output_limit;
 
     return output;
 }
